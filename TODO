@@ -1,0 +1,7 @@
+- work as server socket
+- possibility to access from any shells
+- when error pass last command and error message with possibility to add context
+- think about more commands
+- better prompt shell ==> combination of readline & rich ?
+- try to use the poe "Suggest replies" feature
+- have a better markdown rendering
