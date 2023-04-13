@@ -1,5 +1,9 @@
 import argparse
-import poe
+import readline
+from rich.prompt import Prompt
+from rich.console import Console
+from singleton import Singleton
+from poe_client import Poe
 
 from secret import TOKEN
 
@@ -12,9 +16,43 @@ class Command:
     def __call__(self, args):
         return self.command(args)
 
+class CommandHandler:
+    def __init__(self, commands=None) -> None:
+        self.commands = {
+            "help": Command(lambda _: self.__help__(), "Show this message"),
+        }
+        if commands is not None:
+            self.commands.update(commands)
+    
+    def add_command(self, command, name, help_doc, args=None):
+        self.commands[name] = Command(command, help_doc, args)
+    
+    def match_command(self, command):
+        if command in self.commands:
+            return self.commands[command]
+        else:
+            return Command(lambda _: print("<!> Invalid command (use !help for a list of commands)"), "Invalid command")
+    
+    def __help__(self):
+        for command in self.commands:
+            if self.commands[command].__args__ is None:
+                print(f"!{command} - {self.commands[command].__doc__}")
+            else:
+                print(f"!{command} {self.commands[command].__args__} - {self.commands[command].__doc__}")
+
+    def __getitem__(self, command):
+        return self.match_command(command)
+
 class Prompt:
-    __current_bot = None
-    __bots = {}
+    
+    def __init__(self, token):
+        self.__client = Poe(token)
+        self.__commands = CommandHandler({
+            "clear": Command(lambda _: self.__client.purge_conversation(), "Clear the chat"),
+            "bots": Command(lambda _: self.__client.show_bots(), "Show the list of bots"),
+            "bot": Command(lambda args: self.__client.set_bot(args[0]), "Switch to another bot", "<botname|botid>"),
+            "exit": Command(lambda _: exit(0), "Exit the program"),
+        })
     
     def arg_parser(self):
         parser = argparse.ArgumentParser(description="Poe.com api integration")
@@ -23,61 +61,21 @@ class Prompt:
         args = parser.parse_args()
         
         if args.bot:
-            self.set_bot(args.bot)
-    
-    def __init__(self, token):
-        self.client = poe.Client(token)
-        self.__bots = self.client.bot_names
-        self.__current_bot = list(self.__bots.keys())[0]
-
-    def show_bots(self):
-        for i, bot in enumerate(self.__bots):
-            print(f"<{i}> {bot}: {self.__bots[bot]}")
-        
-    def set_bot(self, _input):
-        try:
-            index = int(_input)
-            self.__current_bot = list(self.__bots.keys())[index]
-        except ValueError:
-            if _input in self.__bots:
-                self.__current_bot = _input
-            else:
-                print("<!> Invalid bot name or index")
+            self.__client.bot = args.bot
     
     def match_prompt(self, prompt):
         command = prompt[1:].split()[0]
         args = prompt[1:].split()[1:]
-        commands = {
-            "clear": Command(lambda _: self.client.send_chat_break(self.__current_bot), "Clear the chat"),
-            "bots": Command(lambda _: self.show_bots(), "Show the list of bots"),
-            "bot" : Command(lambda args: self.set_bot(args[0]), "Switch to another bot", "<botname|botid>"),
-            "exit": Command(lambda _: exit(0), "Exit the program"),
-            "help": Command(None, "Show this message"),
-        }
-        def help_message(_args):
-            for command in commands:
-                if commands[command].__args__ is None:
-                    print(f"!{command} - {commands[command].__doc__}")
-                else:
-                    print(f"!{command} {commands[command].__args__} - {commands[command].__doc__}")
-        commands["help"].command = help_message
-        
-        if command in commands:
-            commands[command](args)
-            return True
-        else:
-            print("<!> Invalid command (use !help for a list of commands)")
-            return False
-
+        self.__commands[command](args)
     
     def ask_prompt(self):
-        prompt = input(f"({self.__bots[self.__current_bot]}) >> ")
-        if prompt[0] == "!":
+        prompt = input(f"({self.__client.bot})> ")
+        if prompt.startswith("!"):
             self.match_prompt(prompt)
         else:
-            for chunk in self.client.send_message(self.__current_bot, prompt):
-                print(chunk["text_new"], end="", flush=True)
-            print("\n", end="", flush=True)
+            for chunk in self.__client.send_message_generator(prompt):
+                print(chunk, end="", flush=True)
+            print("")
     
     def run(self):
         while True:
