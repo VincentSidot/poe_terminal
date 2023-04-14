@@ -5,3 +5,7 @@
 - better prompt shell ==> combination of readline & rich ?
 - try to use the poe "Suggest replies" feature
 - have a better markdown rendering
+
+- have a feature to generate python docstring automaticly
+    --> have a feature to generate docstring for any language
+        --> you only have to sort your items by context needs
