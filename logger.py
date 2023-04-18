@@ -12,11 +12,11 @@ def strftime(format):
 @Singleton
 class Logger:
     def __init__(self) -> None:
-        if not os.path.isdir("logs"):
-            os.mkdir("logs")
+        # if not os.path.isdir("logs"):
+        #    os.mkdir("logs")
         # date = strftime("%Y-%m-%d")
         # self.__file = open(f"logs/poe_client-{date}.log", "a")
-        self.__file = open("poe_client.log", "a")
+        self.__file = open("client_poe.log", "a")
 
     def __del__(self):
         self.__file.close()

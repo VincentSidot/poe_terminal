@@ -1,13 +1,11 @@
 import argparse
 import os
 import sys
+from typing import List
 
 from prompt_toolkit import PromptSession  # type: ignore
-from prompt_toolkit.application.current import get_app  # type: ignore
 from prompt_toolkit.completion import Completer, Completion  # type: ignore
-from prompt_toolkit.enums import EditingMode  # type: ignore
 from prompt_toolkit.key_binding import KeyBindings  # type: ignore
-from prompt_toolkit.formatted_text import HTML
 from rich.console import Console  # type: ignore
 from rich.live import Live  # type: ignore
 from rich.markdown import Markdown  # type: ignore
@@ -121,11 +119,11 @@ class CommandHandler:
         else:
             if self.__help is not None:
                 raise CommandError(
-                    f"<!> Invalid command (use \
+                    f"Invalid command (use \
                     {self.__help} for a list of commands)"
                 )
             else:
-                raise CommandError("<!> Invalid command")
+                raise CommandError("Invalid command")
 
     def __help__(self, commands):
         current_context = self
@@ -146,16 +144,16 @@ class CommandHandler:
                     break
         except IndexError:
             pass
-        buffer = ""
+        buffer = []
         for command in current_context:
             if current_context[command].__args__ is None:
-                buffer += f"{' '.join(commands)} {command} \
-                - {current_context[command].__doc__}\n"
+                buffer.append(f"{' '.join(commands)} {command} \
+                - {current_context[command].__doc__}")
             else:
-                buffer += f"{' '.join(commands)} {command}\
+                buffer.append(f"{' '.join(commands)} {command}\
                 {current_context[command].args}\
-                - {current_context[command].__doc__}\n"
-        return buffer
+                - {current_context[command].__doc__}")
+        return "\n".join(buffer)
 
     def __getitem__(self, command):
         return self.match_command(command)
@@ -194,7 +192,8 @@ class CommandHandler:
         if self.__separators is None:
             return self.match_token(prompt)
         else:
-            sub_prompt = []
+            sub_prompt: List[str] = []
+            new_prompt: List[str] = []
             is_in_token = False
             token_count = 0
             separator_begin = self.__separators[0]
@@ -205,29 +204,38 @@ class CommandHandler:
                     is_in_token = True
                 if token.endswith(separator_end):
                     token_count -= 1
-                    is_in_token = False
+                    if token_count == 0:
+                        is_in_token = False
+                        try:
+                            new_prompt.append(
+                                self.parse_token(" ".join(sub_prompt))
+                            )
+                        except CommandError as e:
+                            raise CommandError(e.message)
+                        finally:
+                            sub_prompt = []
                 if is_in_token:
                     sub_prompt.append(token)
                 else:
-                    if token_count == 0:
-                        try:
-                            return self.parse_token(" ".join(sub_prompt))
-                        except CommandError as e:
-                            return e.message
-                        finally:
-                            sub_prompt = []
-                    else:
-                        sub_prompt.append(token)
-        return ""
+                    new_prompt.append(token)
+
+        return " ".join(new_prompt)
 
     def __call__(self, prompt) -> str:
-        return self.parse_token(prompt)
+        # return self.parse_token(prompt)
+        temp = self.parse_token(prompt)
+        Logger(f"CommandHandler.__call__({prompt}) -> {temp}")
+        return temp
 
 
 class Terminal:
     __modes = {"interactive": "Interactive mode", "batch": "Batch mode"}
     __mode = "interactive"
     __multiline = False
+    __running = True
+
+    def set_running(self, value: bool):
+        self.__running = value
 
     def __init__(self, token):
         self.__client = Poe(token)
@@ -310,18 +318,30 @@ class Terminal:
                 ),
                 "!exit": Command(
                     lambda _: (
-                        "Exiting the program",
-                        exit(0)
+                        self.set_running(False),
+                        "[yellow] Exiting the program [/yellow]",
                     ), "Exit the program"
                 ),
             },
             help="!help",
         )
-        # self.__tokens = CommandHandler(
-        #     {
-        #         "fileContent": Command()
-        #     }
-        # )
+
+        self.__token = CommandHandler(
+            {
+                "file": Command(
+                    lambda args: self.__open_file(args[0]),
+                    "Replace token by file content",
+                    None
+                ),
+                "placeholder": Command(
+                    lambda _: "Dummy placeholder",
+                    "Dummy placeholder",
+                    None
+                )
+            },
+            separators=("{{", "}}")
+        )
+
         self.__console = Console()
         self.__console.set_window_title("Poe.com terminal")
 
@@ -361,28 +381,15 @@ class Terminal:
             self.__multiline = not self.__multiline
             self.__prompt.multiline = self.__multiline
 
-        # @bindings.add('enter')
-        # def _(event):
-        #     event.app.current_buffer.insert_text('\n')
-
         def bottom_toolbar():
             "Display the current input mode."
-            text = HTML(
-                # f'Help: F1 | Clear: F2 | Exit: F3 | Multi-line: F4 <p style="text-align:center;">Multi-line: {self.__multiline}</p>'
-                'This is a <b><style bg="ansired">Toolbar</style></b>!'
-            )
+            text = f'Help: F1 | Clear: F2 | Exit: F3 | Multi-line ({self.__multiline}): F4'
             return [
                 ("class:toolbar", text),
             ]
 
         def rprompt():
             return f"({self.__client.bot}|{self.__mode})"
-
-        # self.__prompt = PromptSession(
-        #     completer=AutoCompletion(self.__commands),
-        #     multiline=True,
-        #     prompt_continuation=prompt_continuation
-        # )
 
         self.__prompt = PromptSession(
             completer=AutoCompletion(self.__commands),
@@ -393,6 +400,17 @@ class Terminal:
             vi_mode=True,
             prompt_continuation=prompt_continuation
         )
+
+    def __open_file(self, file):
+        try:
+            with open(file, "r") as f:
+                return f.read()
+        except FileNotFoundError:
+            raise CommandError(f"File {file} not found")
+        except PermissionError:
+            raise CommandError(f"Permission denied to file {file}")
+        except Exception as e:
+            raise CommandError(f"Error while opening file {file}: {e}")
 
     def set_mode(self, mode):
         self.__mode = mode
@@ -405,7 +423,7 @@ class Terminal:
             "--mode",
             help="Mode",
             default="interactive",
-            choices=["interactive", "batch"],
+            choices=["interactive", "batch", "debug"],
         )
         parser.add_argument(
             "--multiline",
@@ -429,10 +447,12 @@ class Terminal:
 
     def ask_prompt(self):
         prompt = self.__ask_prompt()
+        self.__console.rule("", style="blue")
         try:
             if prompt.startswith("!"):
                 self.__console.print(self.__commands(prompt))
             else:
+                text = f" {prompt} --> {self.__token(prompt)}"
                 if self.__mode == "interactive":
                     text_buffer = ""
                     with Live(
@@ -440,24 +460,26 @@ class Terminal:
                         auto_refresh=False,
                         vertical_overflow="visible",
                     ) as live:
-                        for text_chunk in self.__client.send_message_generator(prompt):
+                        for text_chunk in self.__client.send_message_generator(text):
                             text_buffer += text_chunk
                             md = Markdown(text_buffer)
                             live.update(md)
                             if "\n" in text_chunk:
                                 live.refresh()
                 elif self.__mode == "batch":
-                    md = Markdown(self.__client.send_message(prompt))
+                    md = Markdown(self.__client.send_message(text))
                     self.__console.print(md)
+                elif self.__mode == "debug":
+                    self.__console.print(text)
                 else:
-                    raise CommandError(f"<!> Invalid mode '{self.__mode}'")
+                    raise CommandError(f"Invalid mode '{self.__mode}'")
         except CommandError as e:
             self.__console.print(f"[red]{e}[/red]")
         finally:
             self.__console.rule("", style="blue")
 
     def run(self):
-        while True:
+        while self.__running:
             self.ask_prompt()
 
 
