@@ -120,7 +120,6 @@ class CommandHandler:
         )
 
     def match_token(self, prompt) -> str:
-        Logger(f"CommandHandler.match_token({prompt})")
         result = self.match_prompt(prompt)
         if result is None:
             raise CommandError(f'No result returned with command "{prompt}"')
@@ -133,7 +132,6 @@ class CommandHandler:
                 raise CommandError(f"<!> {e}")
 
     def parse_token(self, prompt) -> str:
-        Logger(f"CommandHandler.parse_token({prompt})")
         if self.__separators is None:
             return self.match_token(prompt)
         else:
@@ -144,22 +142,26 @@ class CommandHandler:
             separator_begin = self.__separators[0]
             separator_end = self.__separators[1]
             for token in prompt.split():
-                if token.startswith(separator_begin):
+                if token.startswith(separator_begin) and token.endswith(separator_end):
+                    new_prompt.append(self.match_token(
+                        token[len(separator_begin): -len(separator_end)]))
+                elif token.startswith(separator_begin):
+                    trailing = token[len(separator_begin):]
+                    if trailing:
+                        sub_prompt.append(trailing)
                     token_count += 1
                     is_in_token = True
-                if token.endswith(separator_end):
+                elif token.endswith(separator_end):
+                    leading = token[: -len(separator_end)]
+                    if leading:
+                        sub_prompt.append(leading)
                     token_count -= 1
                     if token_count == 0:
                         is_in_token = False
                         try:
-                            temp = []
-                            temp.append(f"new_promp_before: {new_prompt}")
-                            temp.append(f"sub_prompt: {sub_prompt}")
                             new_prompt.append(
-                                self.parse_token(" ".join(sub_prompt)).strip()
+                                self.match_token(" ".join(sub_prompt))
                             )
-                            temp.append(f"new_prompt_after: {new_prompt}")
-                            Logger("\n".join(temp))
                         except CommandError as e:
                             raise CommandError(e.message)
                         finally:
@@ -175,29 +177,38 @@ class CommandHandler:
         return self.parse_token(prompt)
 
 
-def run_test(n):
+def run_test():
+    import os
+
     command_handler = CommandHandler(
         {
             "test": Command(lambda _: "test_placeholder", "test command"),
-            "test_with_args": Command(lambda args: f"test({args})", "test command with args"),
+            "file": Command(lambda args: open(args[0]).read(), "file command", "file"),
         },
         separators=["{{", "}}"],
     )
-
+    file_content = open("this_is_a_test_generated_file.txt", "w")
+    file_test_content = "This is a test file"
+    file_content.write(file_test_content)
+    file_content.close()
     input_texts = [
         "This is a test without placeholders",
         "This is a test with space escaped placeholder {{ test }}",
-        "This is a test with non space escaped placeholder {{test}}",
+        "New {{test }}",
+        "New {{ test}}",
+        "New {{test}}",
+        "New {{file this_is_a_test_generated_file.txt}}"
     ]
     reference_texts = [
         "This is a test without placeholders",
-        "This is a test with test_placeholder",
-        "This is a test with test_placeholder",
+        "This is a test with space escaped placeholder test_placeholder",
+        "New test_placeholder",
+        "New test_placeholder",
+        "New test_placeholder",
+        "New " + file_test_content,
     ]
-
-    for i, item in enumerate(zip(input_texts, reference_texts)):
-        if i >= n:
-            break
+    is_passed = True
+    for item in zip(input_texts, reference_texts):
         try:
             computed_text = command_handler(item[0])
             print(f"\"{item[0]}\" -> \"{computed_text}\" == \"{item[1]}\"")
@@ -208,10 +219,15 @@ def run_test(n):
                     f"\tAssertionError: \"{computed_text}\" != \"{item[1]}\"")
         except CommandError as e:
             print(f"CommandError: {e.message}")
+            is_passed = False
+    if os.path.exists("this_is_a_test_generated_file.txt"):
+        os.remove("this_is_a_test_generated_file.txt")
+    if is_passed:
+        print("All tests passed, well done!")
 
 
 if __name__ == "__main__":
     try:
-        run_test(2)
+        run_test()
     except Exception as e:
         print(e)

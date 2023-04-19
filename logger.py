@@ -10,7 +10,7 @@ def strftime(format):
 
 
 @Singleton
-class _Logger:
+class Logger:
     def __init__(self) -> None:
         # if not os.path.isdir("logs"):
         #    os.mkdir("logs")
@@ -41,7 +41,3 @@ class _Logger:
                 self.__call__(message.__str__())
             else:
                 self.__call__(f"<!>(no __repr__ or __str__ method found) {e}")
-
-
-def Logger(message: str):
-    _Logger(message)
