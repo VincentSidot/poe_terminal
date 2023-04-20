@@ -165,7 +165,7 @@ class Terminal:
                 "file": Command(
                     lambda args: self.__open_file(args[0]),
                     "Replace token by file content",
-                    None
+                    "file",
                 ),
             },
             separators=("{{", "}}")
@@ -231,8 +231,12 @@ class Terminal:
         )
 
     def __open_file(self, file):
+        striped_file = file.replace("\"", "").replace("\'", "").strip()
+        Logger(f"{os.getcwd()=}")
+        Logger(f"{os.listdir()=}")
+        Logger(f"{striped_file=}")
         try:
-            with open(file, "r") as f:
+            with open(striped_file, "r") as f:
                 return f.read()
         except FileNotFoundError:
             raise CommandError(f"File {file} not found")
