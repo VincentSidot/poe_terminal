@@ -3,7 +3,7 @@ import os
 import sys
 from typing import List
 
-from prompt_toolkit import PromptSession  # type: ignore
+from prompt_toolkit import PromptSession, prompt  # type: ignore
 from prompt_toolkit.completion import Completer, Completion  # type: ignore
 from prompt_toolkit.key_binding import KeyBindings  # type: ignore
 from rich.console import Console  # type: ignore
@@ -167,6 +167,11 @@ class Terminal:
                     "Replace token by file content",
                     "file",
                 ),
+                "code": Command(
+                    lambda args: f"\n```{args[0]}\n{self.__open_file(args[1])}\n```\n",
+                    "Replace token by file content in a markdown code block",
+                    "language file",
+                )
             },
             separators=("{{", "}}")
         )
@@ -264,6 +269,12 @@ class Terminal:
             action="store_true",
             default=False,
         )
+        parser.add_argument(
+            "-l",
+            "--log",
+            type=str,
+            help="Log file",
+        )
         args = parser.parse_args()
 
         if args.bot:
@@ -275,8 +286,14 @@ class Terminal:
         if args.multiline:
             self.__prompt.multiline = True
 
+        if args.log:
+            Logger.is_active = True
+            Logger.set_file(args.log)
+
     def __ask_prompt(self) -> str:
-        return self.__prompt.prompt("> ")
+        prompt = self.__prompt.prompt("> ")
+        Logger(f"{prompt=} | {len(prompt)=}")
+        return prompt
 
     def ask_prompt(self):
         prompt = self.__ask_prompt()

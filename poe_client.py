@@ -71,3 +71,39 @@ class Poe:
         Logger(f"Sent message: {message}\nReceived chunk: {chunk}")
         text = chunk["text"]
         return text
+
+
+def max_prompt_len(client) -> int:
+    prompt = "a"
+    try:
+        while True:
+            client.send_message(prompt)
+            prompt += "a"
+    finally:
+        return len(prompt)
+
+
+def check_prompt_len(prompt_len) -> bool:
+    client = Poe(token)
+    try:
+        prompt = "a" * prompt_len
+        client.send_message(prompt)
+        return True
+    except:
+        return False
+
+
+def max_prompt_len_dicotomy(prompt_len_min, prompt_len_max) -> int:
+    if not check_prompt_len(prompt_len_min):
+        return prompt_len_min
+    if not check_prompt_len(prompt_len_max):
+        return max_prompt_len_dicotomy(prompt_len_min, (prompt_len_max + prompt_len_min) // 2)
+    if check_prompt_len(prompt_len_max):
+        raise Exception("Max prompt length is too low")
+    return prompt_len_max
+
+
+if __name__ == "__main__":
+    from secret import TOKEN as token
+    max_len = max_prompt_len_dicotomy(500, 100000)
+    print(f"Max prompt length: {max_len}")
