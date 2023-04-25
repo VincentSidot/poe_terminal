@@ -10,11 +10,9 @@ from rich.console import Console  # type: ignore
 from rich.live import Live  # type: ignore
 from rich.markdown import Markdown  # type: ignore
 
+from command import Command, CommandError, CommandHandler  # type: ignore
 from logger import Logger
 from poe_client import Poe, PoeError
-from secret import TOKEN
-
-from command import Command, CommandHandler, CommandError  # type: ignore
 
 
 class AutoCompletion(Completer):
@@ -66,13 +64,14 @@ class Terminal:
     __mode = "interactive"
     __multiline = False
     __running = True
+    __token = None
 
     def set_running(self, value: bool):
         self.__running = value
 
-    def __init__(self, token):
-
-        self.__client = Poe(token)
+    def __init__(self):
+        args = self.arg_parser()
+        self.__client = Poe(args.token)
         self.__commands = CommandHandler(
             {
                 "!clear": Command(
@@ -235,6 +234,19 @@ class Terminal:
             prompt_continuation=prompt_continuation
         )
 
+        if args.bot:
+            self.__client.bot = args.bot
+
+        if args.mode:
+            self.__mode = args.mode
+
+        if args.multiline:
+            self.__prompt.multiline = True
+
+        if args.log:
+            Logger.is_active = True
+            Logger.set_file(args.log)
+
     def __open_file(self, file):
         striped_file = file.replace("\"", "").replace("\'", "").strip()
         Logger(f"{os.getcwd()=}")
@@ -275,20 +287,10 @@ class Terminal:
             type=str,
             help="Log file",
         )
+        parser.add_argument(
+            "-t", "--token", help="POE Token fetch from poe.com cookies", required=True)
         args = parser.parse_args()
-
-        if args.bot:
-            self.__client.bot = args.bot
-
-        if args.mode:
-            self.__mode = args.mode
-
-        if args.multiline:
-            self.__prompt.multiline = True
-
-        if args.log:
-            Logger.is_active = True
-            Logger.set_file(args.log)
+        return args
 
     def __ask_prompt(self) -> str:
         prompt = self.__prompt.prompt("> ")
@@ -334,6 +336,5 @@ class Terminal:
 
 
 if __name__ == "__main__":
-    client = Terminal(TOKEN)
-    client.arg_parser()
+    client = Terminal()
     client.run()
